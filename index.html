@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ระบบผังที่จอดรถ</title>
+
+<style>
+* { box-sizing: border-box; font-family: 'Segoe UI'; margin:0; padding:0;}
+body { background:#f5f6f8; padding:20px;}
+.container { background:white; padding:20px; border-radius:8px;}
+
+.header-panel {
+    background:#f8f9fa;
+    border:1px solid #ddd;
+    padding:15px;
+    margin-bottom:20px;
+}
+
+.controls { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;}
+input { padding:6px 10px; border:1px solid #ccc; border-radius:4px;}
+
+button { padding:6px 12px; border:none; border-radius:4px; color:white; cursor:pointer;}
+.btn-save{background:#28a745;}
+.btn-clear{background:#fd7e14;}
+.btn-all{background:#dc3545;}
+
+.status-bar{font-weight:bold;}
+
+.parking-map-scroll {
+    overflow-x:auto;
+    background:#cbd5e1;
+    padding:10px;
+}
+
+.parking-grid-wrapper { width:1850px;}
+.parking-row { display:flex; }
+
+/* ถนน */
+.road-block {
+    width:50px;
+    height:35px;
+    background:#94a3b8;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:11px;
+    font-weight:bold;
+}
+.road-divider-row {
+    background:#94a3b8;
+    text-align:center;
+    margin:5px 0;
+    padding:5px;
+    font-weight:bold;
+}
+
+/* ช่องจอด */
+.parking-slot {
+    width:42px;
+    height:35px;
+    background:white;
+    border:1px solid #e2e8f0;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    font-size:10px;
+    cursor:pointer;
+}
+.parking-slot:hover { background:#f1f5f9;}
+.occupied { background:#dc3545; color:white;}
+.selected { outline:2px solid blue;}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+<div class="header-panel">
+
+<h3>📌 ระบบผังที่จอดรถ</h3>
+
+<div class="controls">
+<input id="code-input" placeholder="Code">
+<input id="position-input" placeholder="Position" readonly>
+
+<button class="btn-save" onclick="saveParking()">บันทึก</button>
+<button class="btn-clear" onclick="clearSingleParking()">ลบช่อง</button>
+
+<input type="file" accept=".csv" onchange="handleFileUpload(event)">
+<button class="btn-all" onclick="clearAll()">ล้างทั้งหมด</button>
+</div>
+
+<div class="status-bar">
+<span id="vacant">ว่าง: 400</span> |
+<span id="occupied">ไม่ว่าง: 0</span>
+</div>
+
+</div>
+
+<div class="parking-map-scroll">
+<div id="map" class="parking-grid-wrapper"></div>
+</div>
+
+</div>
+
+<script>
+
+const rowGroups = [
+ ['A','B','C'],
+ ['D','E','F'],
+ ['G','H','I'],
+ ['J']
+];
+
+const totalCols = 40;
+const totalSlots = 400;
+
+let parkingData = {};
+
+const map = document.getElementById('map');
+const codeInput = document.getElementById('code-input');
+const positionInput = document.getElementById('position-input');
+
+/* ✅ สร้างผัง */
+function buildMap(){
+    let html="";
+
+    rowGroups.forEach((group, g)=>{
+        
+        group.forEach(row=>{
+            html += `<div class="parking-row"><div class="road-block">ถนน</div>`;
+            
+            for(let c=1;c<=totalCols;c++){
+                let pos = row+c;
+                html += `<div class="parking-slot" id="slot-${pos}" onclick="selectSlot('${pos}')">${pos}</div>`;
+            }
+
+            html += `<div class="road-block">ถนน</div></div>`;
+        });
+
+        if(g < rowGroups.length-1){
+            html += `<div class="road-divider-row">ถนน</div>`;
+        }
+    });
+
+    map.innerHTML = html;
+    updateCounters();
+}
+
+/* ✅ เลือกช่อง */
+function selectSlot(pos){
+    document.querySelectorAll('.parking-slot').forEach(s=>s.classList.remove('selected'));
+
+    let el = document.getElementById("slot-"+pos);
+    el.classList.add('selected');
+
+    positionInput.value = pos;
+    codeInput.value = parkingData[pos] || "";
+
+    codeInput.focus();   // ✅ cursor เข้า
+    codeInput.select();  // ✅ ไฮไลต์
+}
+
+/* ✅ บันทึก + ย้ายตำแหน่งอัตโนมัติ */
+function saveParking(){
+    let pos = positionInput.value;
+    let code = codeInput.value.trim();
+
+    if(!pos || !code){
+        alert("กรอกข้อมูล");
+        return;
+    }
+
+    // 🔥 หา code ซ้ำ
+    for(let key in parkingData){
+        if(parkingData[key] === code && key !== pos){
+            delete parkingData[key];
+            let oldSlot = document.getElementById("slot-"+key);
+            if(oldSlot) oldSlot.classList.remove("occupied");
+        }
+    }
+
+    parkingData[pos] = code;
+    document.getElementById("slot-"+pos).classList.add("occupied");
+
+    updateCounters();
+}
+
+/* ✅ ลบช่อง */
+function clearSingleParking(){
+    let pos = positionInput.value;
+    if(!pos) return;
+
+    delete parkingData[pos];
+    document.getElementById("slot-"+pos).classList.remove("occupied");
+
+    codeInput.value="";
+    updateCounters();
+}
+
+/* ✅ ล้างทั้งหมด */
+function clearAll(){
+    if(!confirm("ล้างทั้งหมด?")) return;
+
+    parkingData = {};
+    document.querySelectorAll('.parking-slot').forEach(s=>s.classList.remove("occupied"));
+
+    updateCounters();
+}
+
+/* ✅ นับ */
+function updateCounters(){
+    let occ = Object.keys(parkingData).length;
+    let vac = totalSlots - occ;
+
+    document.getElementById("vacant").innerText = "ว่าง: "+vac;
+    document.getElementById("occupied").innerText = "ไม่ว่าง: "+occ;
+}
+
+/* ✅ IMPORT CSV */
+function handleFileUpload(e){
+    const file = e.target.files[0];
+    if(!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = function(ev){
+        processCSV(ev.target.result);
+    };
+
+    reader.readAsText(file);
+}
+
+function processCSV(text){
+    const lines = text.split("\n");
+    lines.shift();
+
+    let error=[];
+
+    lines.forEach(line=>{
+        line=line.replace(/\r/g,"").trim();
+        if(!line) return;
+
+        let cols=line.split(",");
+        let pos=cols[0].replace(/"/g,"").trim().toUpperCase();
+        let code=cols[1].replace(/"/g,"").trim();
+
+        // 🔥 กัน code ซ้ำตอน import
+        for(let key in parkingData){
+            if(parkingData[key]===code && key!==pos){
+                delete parkingData[key];
+                let oldSlot=document.getElementById("slot-"+key);
+                if(oldSlot) oldSlot.classList.remove("occupied");
+            }
+        }
+
+        let slot=document.getElementById("slot-"+pos);
+
+        if(!slot){
+            error.push(pos);
+            return;
+        }
+
+        parkingData[pos]=code;
+        slot.classList.add("occupied");
+    });
+
+    updateCounters();
+
+    if(error.length>0){
+        alert("Error:\n"+error.join("\n"));
+    }else{
+        alert("Import สำเร็จ ✅");
+    }
+}
+
+/* ✅ Enter = Save */
+codeInput.addEventListener("keydown", function(e){
+    if(e.key==="Enter"){
+        saveParking();
+    }
+});
+
+buildMap();
+
+</script>
+
+</body>
+</html>
